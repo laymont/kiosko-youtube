@@ -1,0 +1,21 @@
+#!/bin/bash
+# tvplay "frase de busqueda o URL" [N]   -> reproduce en TV
+#   busca y MUESTRA la lista, y en el mismo comando empieza el resultado N (o el 1).
+#   Si NO quieres cambiar la TV ahora, usa  tvs  +  tvctl play N
+set -u
+BIN="$(cd "$(dirname "$0")" && pwd)"
+Q="${1:?uso: tvplay \"busqueda o URL\" [N]}"
+N=${2:-1}
+
+case "$Q" in
+  *://*|www.*|youtu.be/*|youtube.com/*)
+    "$BIN/tvcdp.py" status 2>/dev/null | grep -q OK || "$BIN/tvkiosk"
+    "$BIN/tvcdp.py" navigate "$Q"
+    sleep 4; "$BIN/tvcdp.py" key Space >/dev/null 2>&1
+    "$BIN/tvfull"
+    echo "en TV: $Q"; exit 0
+    ;;
+esac
+
+"$BIN/tvs" "$Q" || exit 1
+"$BIN/tvctl" play "$N"

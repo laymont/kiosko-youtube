@@ -1,0 +1,28 @@
+#!/bin/bash
+# tvadd "frase" -> agrega los resultados a la lista que ya tenias (cola de TV)
+set -u
+BIN="$(cd "$(dirname "$0")" && pwd)"
+Q="${1:?uso: tvadd \"frase de busqueda\"}"
+TMP=/tmp/tvqueue.txt
+CUR=/tmp/tvcur
+YDL="${BIN}/yt-dlp"
+command -v "$YDL" >/dev/null 2>&1 || YDL=$(command -v yt-dlp || true)
+OLD=0; [ -f "$TMP" ] && OLD=$(wc -l < "$TMP")
+JSONF=$(mktemp)
+"$YDL" --flat-playlist --no-warnings \
+  -J "ytsearch5:$Q" > "$JSONF" 2>/dev/null
+python3 - "$JSONF" "$TMP" "$OLD" <<'PYEOF'
+import json, sys
+data = json.load(open(sys.argv[1]))
+old = int(sys.argv[3])
+with open(sys.argv[2], 'a') as f:
+    for e in data.get('entries', []):
+        url = e.get('url') or e.get('webpage_url') or ''
+        vid = url.split('v=')[-1].split('&')[0] if 'v=' in url else url
+        f.write(f"{vid}\t{e.get('title', '')}\n")
+PYEOF
+rm -f "$JSONF"
+[ ! -f "$CUR" ] && echo 1 > "$CUR"
+echo "agregados (cola ahora desde $((OLD+1))):"
+i=$OLD
+while IFS=$'\t' read -r id t; do i=$((i+1)); [ "$i" -gt "$OLD" ] && echo "  $i) $t"; done < "$TMP"

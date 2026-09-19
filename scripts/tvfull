@@ -1,0 +1,6 @@
+#!/bin/bash
+# Re-aplica pantalla completa en el kiosko tras navegar, si estaba activa.
+BIN="$(cd "$(dirname "$0")" && pwd)"
+if [ -f /tmp/tvfull ] && grep -q '^1$' /tmp/tvfull 2>/dev/null; then
+  "$BIN/tvcdp.py" key f >/dev/null 2>&1
+fi

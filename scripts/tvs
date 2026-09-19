@@ -1,0 +1,35 @@
+#!/bin/bash
+# tvs "frase"           -> busca y lista resultados SIN cambiar lo que se ve en TV.
+#                          La lista queda guardada; luego usa: tvctl play N
+# tvs "frase" 3         -> idem, pero desde el resultado 3 hacia adelante (max 10)
+set -u
+BIN="$(cd "$(dirname "$0")" && pwd)"
+Q="${1:?uso: tvs \"frase de busqueda\" [desde]}"
+START=${2:-1}
+TMP=/tmp/tvqueue.txt
+CUR=/tmp/tvcur
+YDL="${BIN}/yt-dlp"
+command -v "$YDL" >/dev/null 2>&1 || YDL=$(command -v yt-dlp || true)
+JSONF=$(mktemp)
+"$YDL" --flat-playlist --no-warnings \
+  -J "ytsearch$((START+9)):$Q" > "$JSONF" 2>/dev/null
+python3 - "$JSONF" "$TMP" "$START" <<'PYEOF'
+import json, sys
+data = json.load(open(sys.argv[1]))
+start = int(sys.argv[3])
+with open(sys.argv[2], 'w') as f:
+    for e in data.get('entries', [])[start-1:]:
+        url = e.get('url') or e.get('webpage_url') or ''
+        vid = url.split('v=')[-1].split('&')[0] if 'v=' in url else url
+        f.write(f"{vid}\t{e.get('title', '')}\n")
+PYEOF
+rm -f "$JSONF"
+if [ ! -s "$TMP" ]; then
+  echo "ERROR: no se encontraron resultados o fallo la red."
+  exit 1
+fi
+echo "resultados (la TV sigue como estaba):"
+i=0
+while IFS=$'\t' read -r id t; do i=$((i+1)); echo "  $i) $t"; done < "$TMP"
+echo "-> para reproducir uno:  tvctl play N"
+echo "-> para agregar a la lista/cola:  tvadd \"otra busqueda\""

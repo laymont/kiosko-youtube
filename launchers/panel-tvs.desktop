@@ -1,0 +1,8 @@
+[Desktop Entry]
+Type=Application
+Name=Panel TVs
+Comment=Abre el panel de control de YouTube en los TVs (buscar, listas, pausa, volumen)
+Exec=bash -c "export PATH=$HOME/.local/bin:$PATH; (curl -s -m 2 -o /dev/null http://127.0.0.1:8765/api/state || { nohup tvpanel > /tmp/tvpanel.log 2>&1 & sleep 2; }); xdg-open http://127.0.0.1:8765/"
+Icon=preferences-system-sound
+Terminal=false
+Categories=AudioVideo;Video;

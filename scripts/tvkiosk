@@ -1,0 +1,32 @@
+#!/bin/bash
+# tvkiosk -> abre (o reutiliza) Chrome kiosko fullscreen en la pantalla de los TVs
+PORT=9222
+PROF="$HOME/.config/tvchrome"
+CHROME=$(command -v google-chrome || command -v chromium || command -v chromium-browser || true)
+[ -z "$CHROME" ] && { echo "ERROR: no hay google-chrome/chromium instalado"; exit 1; }
+GEO=$(xrandr | sed -n 's/^HDMI-1 connected.* \([0-9]*x[0-9]*\)+\([0-9]*\)+\([0-9]*\).*/\1 \2 \3/p' | head -1)
+if [ -z "$GEO" ]; then GEO="1680x1050 1600 0"; fi
+SIZE=${GEO%% *}; REST=${GEO#* }; X=${REST%% *}; Y=${REST##* }
+
+if curl -s "http://127.0.0.1:$PORT/json/version" >/dev/null 2>&1; then
+  echo "kiosko ya en marcha (puerto $PORT)"
+  exit 0
+fi
+
+mkdir -p "$PROF"
+nohup "$CHROME" \
+  --user-data-dir="$PROF" \
+  --ozone-platform=x11 \
+  --remote-debugging-port=$PORT '--remote-allow-origins=*' \
+  --window-position=$X,$Y --window-size=$SIZE \
+  --no-first-run --no-default-browser-check \
+  --noerrdialogs --disable-features=Translate \
+  --app=https://www.youtube.com \
+  >/tmp/tvkiosk.log 2>&1 &
+echo "$!" > /tmp/tvkiosk.pid
+echo "kiosko arrancando en la TV ($SIZE@$X,$Y, pid $(cat /tmp/tvkiosk.pid))"
+for i in $(seq 1 15); do
+  curl -s "http://127.0.0.1:$PORT/json/version" >/dev/null 2>&1 && { echo "listo ($i s)"; exit 0; }
+  sleep 1
+done
+echo "aviso: no se pudo confirmar el puerto en 15 s (revisa /tmp/tvkiosk.log)"

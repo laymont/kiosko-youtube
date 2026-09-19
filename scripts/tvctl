@@ -1,0 +1,71 @@
+#!/bin/bash
+# tvctl - control del kiosko de TVs desde el monitor principal
+#   tvctl pause | play | full | vol+ | vol- | next | prev | play N | list | quit
+set -u
+BIN="$(cd "$(dirname "$0")" && pwd)"
+TMP=/tmp/tvqueue.txt
+CUR=/tmp/tvcur
+CDP="$BIN/tvcdp.py"
+KIOSK="$BIN/tvkiosk"
+FULLH="$BIN/tvfull"
+C="$1"
+
+ensure_dlg() { "$CDP" status 2>/dev/null | grep -q OK; }
+
+play_idx() {
+  local n="$1"
+  local total line vid t
+  total=$(wc -l < "$TMP" 2>/dev/null || echo 0)
+  if [ "$total" = 0 ] || [ ! -s "$TMP" ]; then
+    echo "aun no hay lista. Primero: tvs \"busqueda\"  o  tvplay \"busqueda\""
+    return 1
+  fi
+  if [ "$n" -lt 1 ]; then n=1; fi
+  if [ "$n" -gt "$total" ]; then echo "solo hay $total; uso el ultimo"; n=$total; fi
+  echo "$n" > "$CUR"
+  line=$(sed -n "${n}p" "$TMP")
+  vid="${line%%$'\t'*}"; t="${line#*$'\t'}"
+  ensure_dlg || "$KIOSK"
+  "$CDP" navigate "https://www.youtube.com/watch?v=${vid}&autoplay=1"
+  sleep 4; "$CDP" key Space >/dev/null 2>&1
+  "$FULLH"
+  echo "($n) $t"
+}
+
+case "$C" in
+  pause)         "$CDP" key Space ;;
+  play)          if [ $# -ge 2 ]; then play_idx "$2"; else "$CDP" key Space; fi ;;
+  full)          "$CDP" key f >/dev/null 2>&1
+                sleep 1
+                if "$CDP" eval '!!document.fullscreenElement' 2>/dev/null | grep -qi 'true'; then
+                  echo 1 > /tmp/tvfull; echo "pantalla completa: activada"
+                else
+                  echo 0 > /tmp/tvfull; echo "pantalla completa: desactivada"
+                fi ;;
+  vol+|subir)    "$CDP" key ArrowUp ;;
+  vol-|bajar)    "$CDP" key ArrowDown ;;
+  salto|adelantar) "$CDP" key End ;;
+  retroceder)    "$CDP" key Home ;;
+  quit|cerrar)   "$CDP" close ;;
+  play)          play_idx "${2:-1}" ;;
+  [0-9]*)        play_idx "$C" ;;
+  next|siguiente)
+    [ ! -f "$CUR" ] && { echo "primero: tvs \"busqueda\" o tvplay"; exit 1; }
+    n=$(cat "$CUR"); total=$(wc -l < "$TMP" 2>/dev/null || echo 0)
+    n=$((n+1)); [ "$n" -gt "$total" ] && n=1
+    play_idx "$n" | sed 's/^/   /' ; echo "-> $n"
+    ;;
+  prev|anterior)
+    [ ! -f "$CUR" ] && { echo "primero: tvs \"busqueda\" o tvplay"; exit 1; }
+    n=$(cat "$CUR"); total=$(wc -l < "$TMP" 2>/dev/null || echo 0)
+    n=$((n-1)); [ "$n" -lt 1 ] && n=$total
+    play_idx "$n" | sed 's/^/   /'; echo "-> $n"
+    ;;
+  list|lista)
+    [ ! -f "$TMP" ] && { echo "aun no hay lista"; exit 0; }
+    i=0
+    cur=$(cat "$CUR" 2>/dev/null || echo 0)
+    while IFS=$'\t' read -r id t; do i=$((i+1)); [ "$i" = "$cur" ] && m="*" || m=" "; echo " $m $i) $t"; done < "$TMP"
+    ;;
+  *) echo "uso: tvctl pause | full | vol+ | vol- | next | prev | play N | list | quit" ;;
+esac
