@@ -4,6 +4,21 @@ PORT=9222
 PROF="$HOME/.config/tvchrome"
 CHROME=$(command -v google-chrome || command -v chromium || command -v chromium-browser || true)
 [ -z "$CHROME" ] && { echo "ERROR: no hay google-chrome/chromium instalado"; exit 1; }
+
+# Entorno grafico: si lo arranca tvpanel como servicio de systemd no hay
+# DISPLAY/XAUTHORITY y Chrome con --ozone-platform=x11 muere al instante con
+# "Missing X server or $DISPLAY". Se descubre la sesion Wayland/X11 propia.
+if ! xrandr >/dev/null 2>&1; then
+  RT="${XDG_RUNTIME_DIR:-/run/user/$(id -u)}"
+  for a in "$RT"/.mutter-Xwaylandauth.* "$HOME"/.Xauthority; do
+    if [ -r "$a" ]; then export XAUTHORITY="$a"; break; fi
+  done
+  for n in $(ls /tmp/.X11-unix 2>/dev/null | sed -n 's/^X\([0-9]\+\)$/\1/p' | sort -rn); do
+    if DISPLAY=":$n" xrandr >/dev/null 2>&1; then export DISPLAY=":$n"; break; fi
+  done
+fi
+xrandr >/dev/null 2>&1 || { echo "ERROR: no hay servidor X (XWayland) disponible"; exit 1; }
+
 GEO=$(xrandr | sed -n 's/^HDMI-1 connected.* \([0-9]*x[0-9]*\)+\([0-9]*\)+\([0-9]*\).*/\1 \2 \3/p' | head -1)
 if [ -z "$GEO" ]; then GEO="1680x1050 1600 0"; fi
 SIZE=${GEO%% *}; REST=${GEO#* }; X=${REST%% *}; Y=${REST##* }
