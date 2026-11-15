@@ -70,3 +70,19 @@ CDP. No hay build, tests, linter ni CI.
   errores de los scripts se muestran tal cual, así que redáctalos para el usuario.
 - Sin dependencias nuevas: stdlib de Python + `websocket-client` + `yt-dlp`.
 - La instalación es `install.sh`; no añadas empaquetado ni gestores de tareas.
+
+## Extensiones anti-ads
+
+- `install.sh` pregunta si instalar uBlock Origin y SponsorBlock; si acepta, los
+  descarga de GitHub releases y los extrae en `~/.config/tvchrome/extensions/`.
+- `tvkiosk` los carga con `--load-extension` si existen `manifest.json` en cada
+  subdirectorio (`ublock`, `sponsorblock`).
+- Para actualizar: borra el directorio y reejecuta `install.sh` (o descarga la
+  nueva versión manualmente).
+
+## Icono .desktop
+
+- Solo se instala `panel-tvs.desktop` (menú de aplicaciones + escritorio).
+- `Exec=tvpanel-gui` (script wrapper simple); evita `bash -c "..."` en Exec
+  porque GNOME lo marca como "fichero dañado".
+- `tvpanel-gui` arranca `tvpanel` si no responde y abre `http://127.0.0.1:8765/`.

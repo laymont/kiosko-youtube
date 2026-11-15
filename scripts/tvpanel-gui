@@ -1,0 +1,20 @@
+#!/bin/bash
+# tvpanel-gui - abre el panel web de control de TVs en el navegador
+# Uso: se llama desde el icono .desktop del escritorio
+set -u
+
+BIN="$(cd "$(dirname "$0")" && pwd)"
+PANEL_URL="http://127.0.0.1:8765/"
+API_URL="http://127.0.0.1:8765/api/state"
+
+# Exportar PATH para encontrar los scripts instalados
+export PATH="$HOME/.local/bin:$PATH"
+
+# Si el panel no responde, arrancarlo en segundo plano
+if ! curl -s -m 2 -o /dev/null "$API_URL" 2>/dev/null; then
+    nohup tvpanel > /tmp/tvpanel.log 2>&1 &
+    sleep 2
+fi
+
+# Abrir el panel en el navegador predeterminado
+xdg-open "$PANEL_URL" 2>/dev/null || true

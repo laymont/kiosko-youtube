@@ -61,18 +61,21 @@ rm -rf "$HOME/.config/tvchrome"
 # 4. Eliminar scripts de $DEST
 echo ""
 echo "🗑️ Eliminando scripts instalados de $DEST..."
-for f in tvkiosk tvcdp.py tvplay tvs tvadd tvctl tvpanel tvfull yt-dlp; do
+for f in tvkiosk tvcdp.py tvplay tvs tvadd tvctl tvpanel tvpanel-gui tvfull yt-dlp; do
     if [ -f "$DEST/$f" ]; then
         echo "  - $f"
         rm -f "$DEST/$f"
     fi
 done
 
-# 5. Eliminar archivos .desktop del escritorio
+# 5. Eliminar archivos .desktop del escritorio y del menú de aplicaciones
 echo ""
-echo "🗑️ Limpiando lanzadores del escritorio..."
+echo "🗑️ Limpiando lanzadores..."
 rm -f "$DESKTOP_DIR/tvkiosk.desktop"
 rm -f "$DESKTOP_DIR/panel-tvs.desktop"
+rm -f "$HOME/.local/share/applications/tvkiosk.desktop"
+rm -f "$HOME/.local/share/applications/panel-tvs.desktop"
+update-desktop-database "$HOME/.local/share/applications" 2>/dev/null || true
 
 # 6. Limpieza final (opcional)
 echo ""

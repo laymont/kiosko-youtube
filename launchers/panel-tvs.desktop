@@ -2,7 +2,7 @@
 Type=Application
 Name=YouTube en TVs
 Comment=Panel de control de YouTube en los TVs (buscar, listas, pausa, volumen, pantalla completa)
-Exec=bash -c "export PATH=\$HOME/.local/bin:\$PATH; (curl -s -m 2 -o /dev/null http://127.0.0.1:8765/api/state || { nohup tvpanel > /tmp/tvpanel.log 2>&1 & sleep 2; }); xdg-open http://127.0.0.1:8765/"
+Exec=tvpanel-gui
 Icon=preferences-system-sound
 Terminal=false
 Categories=AudioVideo;Video;
@@ -12,8 +12,8 @@ Actions=search;kiosk;
 
 [Desktop Action search]
 Name=Buscar en YouTube
-Exec=bash -c "export PATH=\$HOME/.local/bin:\$PATH; (curl -s -m 2 -o /dev/null http://127.0.0.1:8765/api/state || { nohup tvpanel > /tmp/tvpanel.log 2>&1 & sleep 2; }); xdg-open http://127.0.0.1:8765/"
+Exec=tvpanel-gui
 
 [Desktop Action kiosk]
 Name=Arrancar kiosko TV
-Exec=bash -c "export PATH=\$HOME/.local/bin:\$PATH; tvkiosk"
+Exec=tvkiosk

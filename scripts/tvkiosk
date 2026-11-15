@@ -29,10 +29,25 @@ if curl -s "http://127.0.0.1:$PORT/json/version" >/dev/null 2>&1; then
 fi
 
 mkdir -p "$PROF"
+
+# Extensiones anti-ads (uBlock Origin, SponsorBlock)
+EXT_DIR="$PROF/extensions"
+EXT_LIST=""
+if [ -d "$EXT_DIR/ublock" ] && [ -f "$EXT_DIR/ublock/manifest.json" ]; then
+  EXT_LIST="$EXT_DIR/ublock"
+fi
+if [ -d "$EXT_DIR/sponsorblock" ] && [ -f "$EXT_DIR/sponsorblock/manifest.json" ]; then
+  [ -n "$EXT_LIST" ] && EXT_LIST="$EXT_LIST,"
+  EXT_LIST="$EXT_LIST$EXT_DIR/sponsorblock"
+fi
+EXT_FLAGS=""
+[ -n "$EXT_LIST" ] && EXT_FLAGS="--load-extension=$EXT_LIST"
+
 nohup "$CHROME" \
   --user-data-dir="$PROF" \
   --ozone-platform=x11 \
   --remote-debugging-port=$PORT '--remote-allow-origins=*' \
+  $EXT_FLAGS \
   --window-position=$X,$Y --window-size=$SIZE \
   --no-first-run --no-default-browser-check \
   --noerrdialogs --disable-features=Translate \

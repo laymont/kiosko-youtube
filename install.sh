@@ -6,6 +6,7 @@ set -e
 SRC="$(cd "$(dirname "$0")" && pwd)/scripts"
 DEST="${1:-$HOME/.local/bin}"
 DESKTOP_DIR="$(xdg-user-dir DESKTOP 2>/dev/null || echo "$HOME/Escritorio")"
+PROF="$HOME/.config/tvchrome"
 
 # Función para ejecutar comandos con retries y backoff exponencial
 run_with_retry() {
@@ -128,11 +129,11 @@ echo "  ✓ websocket-client"
 
 echo "== copiando scripts a $DEST =="
 mkdir -p "$DEST"
-for f in tvkiosk tvcdp.py tvplay tvs tvadd tvctl tvpanel tvfull; do
+for f in tvkiosk tvcdp.py tvplay tvs tvadd tvctl tvpanel tvpanel-gui tvfull; do
   cp "$SRC/$f" "$DEST/$f"
   chmod +x "$DEST/$f"
 done
-chmod +x "$DEST/tvcdp.py" "$DEST/tvpanel"
+chmod +x "$DEST/tvcdp.py" "$DEST/tvpanel" "$DEST/tvpanel-gui"
 
 echo "== wrapper yt-dlp =="
 cat > "$DEST/yt-dlp" <<'EOF'
@@ -141,12 +142,84 @@ exec python3 -m yt_dlp "$@"
 EOF
 chmod +x "$DEST/yt-dlp"
 
+# ============================================================
+# Extensiones anti-ads (opcional)
+# ============================================================
+echo ""
+echo "== extensiones anti-ads =="
+echo ""
+echo "YouTube muestra anuncios que interrumpen la reproducción."
+echo "Puedes instalar dos extensiones de Chrome para bloquearlos:"
+echo ""
+echo "  1. uBlock Origin  - bloquea anuncios de YouTube (pre-roll, mid-roll, banners)"
+echo "  2. SponsorBlock   - salta segmentos de patrocinio marcados por la comunidad"
+echo ""
+read -p "¿Instalar bloqueo de anuncios? [s/N]: " install_ads
+
+if [ "$install_ads" = "s" ] || [ "$install_ads" = "S" ] || [ "$install_ads" = "sí" ] || [ "$install_ads" = "si" ]; then
+    EXT_DIR="$PROF/extensions"
+    mkdir -p "$EXT_DIR"
+
+    # uBlock Origin
+    echo ""
+    echo "Descargando uBlock Origin..."
+    UBLOCK_ZIP=$(mktemp)
+    if curl -sL -m 120 -o "$UBLOCK_ZIP" "https://github.com/gorhill/uBlock/releases/download/1.76.2/uBlock0_1.76.2.chromium.zip"; then
+        rm -rf "$EXT_DIR/ublock" "$EXT_DIR/ublock-tmp"
+        mkdir -p "$EXT_DIR/ublock"
+        unzip -q -o "$UBLOCK_ZIP" -d "$EXT_DIR/ublock-tmp"
+        # El ZIP tiene un subdirectorio uBlock0.chromium/, mover su contenido
+        if [ -d "$EXT_DIR/ublock-tmp/uBlock0.chromium" ]; then
+            cp -r "$EXT_DIR/ublock-tmp/uBlock0.chromium"/* "$EXT_DIR/ublock/"
+        else
+            cp -r "$EXT_DIR/ublock-tmp"/* "$EXT_DIR/ublock/"
+        fi
+        rm -rf "$EXT_DIR/ublock-tmp"
+        rm -f "$UBLOCK_ZIP"
+        echo "  ✓ uBlock Origin instalado"
+    else
+        echo "  ✗ Error al descargar uBlock Origin"
+        rm -f "$UBLOCK_ZIP"
+    fi
+
+    # SponsorBlock
+    echo ""
+    echo "Descargando SponsorBlock..."
+    SB_ZIP=$(mktemp)
+    if curl -sL -m 60 -o "$SB_ZIP" "https://github.com/ajayyy/SponsorBlock/releases/download/6.1.7/ChromeExtension.zip"; then
+        rm -rf "$EXT_DIR/sponsorblock"
+        mkdir -p "$EXT_DIR/sponsorblock"
+        unzip -q -o "$SB_ZIP" -d "$EXT_DIR/sponsorblock"
+        rm -f "$SB_ZIP"
+        echo "  ✓ SponsorBlock instalado"
+    else
+        echo "  ✗ Error al descargar SponsorBlock"
+        rm -f "$SB_ZIP"
+    fi
+
+    echo ""
+    echo "Las extensiones se cargarán automáticamente al arrancar el kiosko."
+else
+    echo ""
+    echo "Puedes instalarlas más tarde ejecutando: ./install.sh"
+    echo "O manualmente desde Chrome Web Store en el perfil del kiosko."
+fi
+
 echo "== accesos en el escritorio ($DESKTOP_DIR) =="
+# Instalar en el menú de aplicaciones (GNOME/KDE)
+APPS_DIR="$HOME/.local/share/applications"
+mkdir -p "$APPS_DIR"
+install -m 644 "$SRC/../launchers/panel-tvs.desktop" "$APPS_DIR/panel-tvs.desktop"
+
+# Crear icono en el escritorio si el directorio existe
 mkdir -p "$DESKTOP_DIR"
-# Limpiar iconos antiguos para evitar duplicados
 rm -f "$DESKTOP_DIR/tvkiosk.desktop"
 rm -f "$DESKTOP_DIR/panel-tvs.desktop"
 install -m 755 "$SRC/../launchers/panel-tvs.desktop" "$DESKTOP_DIR/panel-tvs.desktop"
+
+# Actualizar caché de aplicaciones
+update-desktop-database "$APPS_DIR" 2>/dev/null || true
+
 gtk-launch panel-tvs.desktop 2>/dev/null || true
 
 echo ""
