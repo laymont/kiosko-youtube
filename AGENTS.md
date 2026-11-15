@@ -41,6 +41,9 @@ CDP. No hay build, tests, linter ni CI.
 ## CDP y kiosko
 
 - CDP en `9222`, perfil `~/.config/tvchrome`; panel en `127.0.0.1:8765`.
+- El panel usa OTRO Chrome con perfil `~/.config/tvpanel` y CDP `9223`
+  (`tvpanel-gui`): no tocar los perfiles personales del usuario ni crear
+  pestañas duplicadas (activa la pestaña existente vía `/json/activate`).
 - `--ozone-platform=x11` es obligatorio: el backend Wayland nativo ignora
   `--window-position` y el kiosko no cae en el rect de HDMI-1.
 - `tvkiosk` es idempotente (si 9222 responde, sale 0). Para reiniciar de verdad:
@@ -83,7 +86,9 @@ CDP. No hay build, tests, linter ni CI.
 
 ## Icono .desktop
 
-- Solo se instala `panel-tvs.desktop` (menú de aplicaciones + escritorio).
-- `Exec=tvpanel-gui` (script wrapper simple); evita `bash -c "..."` en Exec
-  porque GNOME lo marca como "fichero dañado".
-- `tvpanel-gui` arranca `tvpanel` si no responde y abre `http://127.0.0.1:8765/`.
+- Solo se instala `panel-tvs.desktop` en `~/.local/share/applications/`
+  (menú de aplicaciones). `install.sh` reescribe `Exec=` con la ruta
+  absoluta de `DEST`: sin ella GNOME no muestra el lanzador.
+- `tvpanel-gui` arranca `tvpanel` si no responde y abre el panel en el
+  Chrome de perfil dedicado `~/.config/tvpanel` (CDP 9223), no con
+  `xdg-open`: así no se ensucian los perfiles del usuario.

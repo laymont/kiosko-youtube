@@ -79,7 +79,9 @@ y saltaba al ~60% del vídeo (bug ya corregido).
 - Metadatos (thumb/channel/duration): `/tmp/tvmeta.json`
 - Flag de pantalla completa deseada: `/tmp/tvfull`
 - Log del kiosko: `/tmp/tvkiosk.log` · del panel: `/tmp/tvpanel.log`
-- Puerto CDP: `9222` · Panel: `8765`
+- Puerto CDP: `9222` (kiosko) y `9223` (ventana del panel) · Panel: `8765`
+- Perfiles de Chrome: `~/.config/tvchrome` (kiosko) y `~/.config/tvpanel`
+  (panel). Ambos son independientes de los perfiles personales del usuario.
 
 ## script por script (scripts/)
 
@@ -92,3 +94,5 @@ y saltaba al ~60% del vídeo (bug ya corregido).
 - `tvpanel` — panel web (ThreadingHTTPServer); endpoints `/api/state`,
   `/api/search`, `/api/more`, `/api/play`, `/api/add`, `/api/nav`, `/api/cmd`.
 - `tvfull` — reaplica pantalla completa tras navegar si `/tmp/tvfull` = 1.
+- `tvpanel-gui` — lanzador del menú: abre el panel en el Chrome del perfil
+  `~/.config/tvpanel` (CDP 9223) y reutiliza la pestaña si ya está abierta.

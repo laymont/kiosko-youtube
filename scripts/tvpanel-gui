@@ -1,20 +1,67 @@
 #!/bin/bash
-# tvpanel-gui - abre el panel web de control de TVs en el navegador
-# Uso: se llama desde el icono .desktop del escritorio
+# tvpanel-gui - abre el panel web de control de TVs en un perfil de Chrome dedicado
+# Uso: se llama desde el lanzador del menú de aplicaciones
 set -u
 
 BIN="$(cd "$(dirname "$0")" && pwd)"
 PANEL_URL="http://127.0.0.1:8765/"
 API_URL="http://127.0.0.1:8765/api/state"
+PANEL_PROF="$HOME/.config/tvpanel"
+CDP_PORT=9223
+CDP_BASE="http://127.0.0.1:$CDP_PORT"
 
-# Exportar PATH para encontrar los scripts instalados
 export PATH="$HOME/.local/bin:$PATH"
 
 # Si el panel no responde, arrancarlo en segundo plano
 if ! curl -s -m 2 -o /dev/null "$API_URL" 2>/dev/null; then
-    nohup tvpanel > /tmp/tvpanel.log 2>&1 &
+    nohup "$BIN/tvpanel" > /tmp/tvpanel.log 2>&1 &
     sleep 2
 fi
 
-# Abrir el panel en el navegador predeterminado
-xdg-open "$PANEL_URL" 2>/dev/null || true
+CHROME=$(command -v google-chrome || command -v chromium || command -v chromium-browser || true)
+
+# Si el Chrome del panel no está corriendo, arrancarlo con su perfil dedicado
+if ! curl -s -m 2 -o /dev/null "$CDP_BASE/json/version" 2>/dev/null; then
+    if [ -z "$CHROME" ]; then
+        # Sin Chrome: abrir con el navegador predeterminado como último recurso
+        xdg-open "$PANEL_URL" 2>/dev/null || true
+        exit 0
+    fi
+    mkdir -p "$PANEL_PROF"
+    nohup "$CHROME" \
+        --user-data-dir="$PANEL_PROF" \
+        --remote-debugging-port=$CDP_PORT \
+        '--remote-allow-origins=*' \
+        --no-first-run \
+        --no-default-browser-check \
+        "$PANEL_URL" > /tmp/tvpanel-chrome.log 2>&1 &
+    exit 0
+fi
+
+# Chrome del panel ya corre: reutilizar la pestaña existente o abrir una nueva
+python3 - "$PANEL_URL" "$CDP_BASE" <<'PYEOF'
+import json, sys, urllib.request, urllib.parse
+
+url, base = sys.argv[1], sys.argv[2]
+
+def get(path):
+    return urllib.request.urlopen(base + path, timeout=4).read()
+
+def put(path):
+    req = urllib.request.Request(base + path, method='PUT')
+    return urllib.request.urlopen(req, timeout=4).read()
+
+tabs = json.loads(get('/json/list'))
+pages = [t for t in tabs
+         if t.get('type') == 'page' and '127.0.0.1:8765' in t.get('url', '')]
+
+if pages:
+    # Ya hay pestaña del panel: activarla en vez de duplicar
+    tid = pages[0]['id']
+    try:
+        put(f'/json/activate/{tid}')
+    except Exception:
+        get(f'/json/activate/{tid}')
+else:
+    put('/json/new?' + urllib.parse.quote(url, safe=''))
+PYEOF

@@ -23,11 +23,14 @@ if [ -f "$HOME/.config/tvchrome/tvkiosk.pid" ]; then
 fi
 
 # Panel web en puerto 8765
-PANEL_PID=$(pgrep -f "tvpanel" 2>/dev/null | head -1 || true)
+PANEL_PID=$(pgrep -f "tvpanel$" 2>/dev/null | head -1 || true)
 if [ -n "$PANEL_PID" ]; then
     echo "  - Panel web (PID $PANEL_PID)"
     kill "$PANEL_PID" 2>/dev/null || true
 fi
+
+# Chrome del panel (perfil dedicado tvpanel)
+pkill -f -- "--user-data-dir=$HOME/.config/tvpanel" 2>/dev/null || true
 
 # 2. Eliminar archivos de estado en /tmp
 echo ""
@@ -40,6 +43,8 @@ rm -f /tmp/tvkiosk.pid
 rm -f /tmp/tvmeta.json
 rm -f /tmp/tvlastq.txt
 rm -f /tmp/tvkeypad.log
+rm -f /tmp/tvpanel.log
+rm -f /tmp/tvpanel-chrome.log
 
 # 3. Backup de favoritos y limpieza de ~/.config/tvchrome
 echo ""
@@ -57,6 +62,7 @@ fi
 echo ""
 echo "🗑️ Limpiando configuración del kiosko..."
 rm -rf "$HOME/.config/tvchrome"
+rm -rf "$HOME/.config/tvpanel"
 
 # 4. Eliminar scripts de $DEST
 echo ""
