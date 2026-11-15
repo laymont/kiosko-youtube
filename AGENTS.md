@@ -86,9 +86,11 @@ CDP. No hay build, tests, linter ni CI.
 
 ## Icono .desktop
 
-- Solo se instala `panel-tvs.desktop` en `~/.local/share/applications/`
-  (menú de aplicaciones). `install.sh` reescribe `Exec=` con la ruta
-  absoluta de `DEST`: sin ella GNOME no muestra el lanzador.
+- `panel-tvs.desktop` se instala en `~/.local/share/applications/` (menú) y
+  en el escritorio (`~/Escritorio`). `install.sh` reescribe `Exec=` con la
+  ruta absoluta de `DEST`: sin ella GNOME no muestra el lanzador. En el
+  escritorio GNOME lo muestra atenuado hasta "Permitir lanzamiento"; es lo
+  esperado, no un error.
 - `tvpanel-gui` arranca `tvpanel` si no responde y abre el panel en el
   Chrome de perfil dedicado `~/.config/tvpanel` (CDP 9223), no con
   `xdg-open`: así no se ensucian los perfiles del usuario.

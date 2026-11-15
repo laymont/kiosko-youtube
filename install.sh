@@ -214,9 +214,12 @@ install -m 644 "$SRC/../launchers/panel-tvs.desktop" "$APPS_DIR/panel-tvs.deskto
 DEST_ESC=$(printf '%s' "$DEST" | sed 's/[&|\\]/\\&/g')
 sed -i "s|^Exec=tvpanel-gui$|Exec=$DEST_ESC/tvpanel-gui|" "$APPS_DIR/panel-tvs.desktop"
 
+# En el escritorio: GNOME lo muestra atenuado hasta que el usuario haga
+# clic derecho -> "Permitir lanzamiento" (medida de seguridad normal)
+install -m 755 "$APPS_DIR/panel-tvs.desktop" "$DESKTOP_DIR/panel-tvs.desktop"
+
 # Limpiar iconos antiguos del escritorio (GNOME los marca como dañados)
 rm -f "$DESKTOP_DIR/tvkiosk.desktop"
-rm -f "$DESKTOP_DIR/panel-tvs.desktop"
 
 # Actualizar caché de aplicaciones
 update-desktop-database "$APPS_DIR" 2>/dev/null || true
