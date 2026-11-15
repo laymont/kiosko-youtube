@@ -52,32 +52,50 @@ except Exception as e:
 PYEOF
 }
 
+mkdir -p "$PROF"
+
+# Extensiones anti-ads (uBlock Origin Lite MV3, SponsorBlock)
+# Chrome 137+ ignora --load-extension en builds oficiales: se cargan por
+# CDP con Extensions.loadUnpacked una vez el puerto responde.
+EXT_DIR="$PROF/extensions"
+EXT_PATHS=""
+for d in ublocklite sponsorblock; do
+  [ -f "$EXT_DIR/$d/manifest.json" ] && EXT_PATHS="$EXT_PATHS $EXT_DIR/$d"
+done
+
+load_extensions() {
+[ -z "$EXT_PATHS" ] && return 0
+EXT_PATHS="$EXT_PATHS" python3 - <<'PYEOF'
+import json, os, sys, urllib.request
+from websocket import create_connection
+try:
+    ver = json.load(urllib.request.urlopen('http://127.0.0.1:9222/json/version', timeout=4))
+    ws = create_connection(ver['webSocketDebuggerUrl'], timeout=8)
+    for i, path in enumerate(os.environ['EXT_PATHS'].split(), 1):
+        ws.send(json.dumps({'id': i, 'method': 'Extensions.loadUnpacked',
+                            'params': {'path': path}}))
+        while True:
+            m = json.loads(ws.recv())
+            if m.get('id') == i:
+                if 'error' in m:
+                    print(f'aviso: no se pudo cargar {path} ({m["error"].get("message","")})')
+                break
+except Exception as e:
+    print(f'aviso: no se pudieron cargar las extensiones ({e})')
+PYEOF
+}
+
 if curl -s "http://127.0.0.1:$PORT/json/version" >/dev/null 2>&1; then
   enforce_bounds
+  load_extensions
   echo "kiosko ya en marcha (puerto $PORT)"
   exit 0
 fi
-
-mkdir -p "$PROF"
-
-# Extensiones anti-ads (uBlock Origin, SponsorBlock)
-EXT_DIR="$PROF/extensions"
-EXT_LIST=""
-if [ -d "$EXT_DIR/ublock" ] && [ -f "$EXT_DIR/ublock/manifest.json" ]; then
-  EXT_LIST="$EXT_DIR/ublock"
-fi
-if [ -d "$EXT_DIR/sponsorblock" ] && [ -f "$EXT_DIR/sponsorblock/manifest.json" ]; then
-  [ -n "$EXT_LIST" ] && EXT_LIST="$EXT_LIST,"
-  EXT_LIST="$EXT_LIST$EXT_DIR/sponsorblock"
-fi
-EXT_FLAGS=""
-[ -n "$EXT_LIST" ] && EXT_FLAGS="--load-extension=$EXT_LIST"
 
 nohup "$CHROME" \
   --user-data-dir="$PROF" \
   --ozone-platform=x11 \
   --remote-debugging-port=$PORT '--remote-allow-origins=*' \
-  $EXT_FLAGS \
   --window-position=$X,$Y --window-size=$SIZE \
   --no-first-run --no-default-browser-check \
   --noerrdialogs --disable-features=Translate \
@@ -92,6 +110,7 @@ for i in $(seq 1 15); do
 done
 if [ -n "$READY" ]; then
   enforce_bounds
+  load_extensions
   echo "listo ($i s)"
 else
   echo "aviso: no se pudo confirmar el puerto en 15 s (revisa /tmp/tvkiosk.log)"

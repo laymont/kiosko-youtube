@@ -151,8 +151,8 @@ echo ""
 echo "YouTube muestra anuncios que interrumpen la reproducción."
 echo "Puedes instalar dos extensiones de Chrome para bloquearlos:"
 echo ""
-echo "  1. uBlock Origin  - bloquea anuncios de YouTube (pre-roll, mid-roll, banners)"
-echo "  2. SponsorBlock   - salta segmentos de patrocinio marcados por la comunidad"
+echo "  1. uBlock Origin Lite - bloquea anuncios de YouTube (pre-roll, mid-roll, banners)"
+echo "  2. SponsorBlock        - salta segmentos de patrocinio marcados por la comunidad"
 echo ""
 read -p "¿Instalar bloqueo de anuncios? [s/N]: " install_ads
 
@@ -160,25 +160,25 @@ if [ "$install_ads" = "s" ] || [ "$install_ads" = "S" ] || [ "$install_ads" = "s
     EXT_DIR="$PROF/extensions"
     mkdir -p "$EXT_DIR"
 
-    # uBlock Origin
+    # uBlock Origin Lite (MV3: uBlock Origin clásico es MV2 y Chrome 139+ no lo carga)
     echo ""
-    echo "Descargando uBlock Origin..."
+    echo "Descargando uBlock Origin Lite..."
     UBLOCK_ZIP=$(mktemp)
-    if curl -sL -m 120 -o "$UBLOCK_ZIP" "https://github.com/gorhill/uBlock/releases/download/1.76.2/uBlock0_1.76.2.chromium.zip"; then
-        rm -rf "$EXT_DIR/ublock" "$EXT_DIR/ublock-tmp"
-        mkdir -p "$EXT_DIR/ublock"
-        unzip -q -o "$UBLOCK_ZIP" -d "$EXT_DIR/ublock-tmp"
-        # El ZIP tiene un subdirectorio uBlock0.chromium/, mover su contenido
-        if [ -d "$EXT_DIR/ublock-tmp/uBlock0.chromium" ]; then
-            cp -r "$EXT_DIR/ublock-tmp/uBlock0.chromium"/* "$EXT_DIR/ublock/"
+    if curl -sL -m 120 -o "$UBLOCK_ZIP" "https://github.com/uBlockOrigin/uBOL-home/releases/download/2026.1110.1816/uBOLite_2026.1110.1816.chromium.zip"; then
+        rm -rf "$EXT_DIR/ublocklite" "$EXT_DIR/ublocklite-tmp" "$EXT_DIR/ublock"
+        mkdir -p "$EXT_DIR/ublocklite"
+        unzip -q -o "$UBLOCK_ZIP" -d "$EXT_DIR/ublocklite-tmp"
+        # El ZIP tiene un subdirectorio uBOLite.chromium/, mover su contenido
+        if [ -d "$EXT_DIR/ublocklite-tmp/uBOLite.chromium" ]; then
+            cp -r "$EXT_DIR/ublocklite-tmp/uBOLite.chromium"/* "$EXT_DIR/ublocklite/"
         else
-            cp -r "$EXT_DIR/ublock-tmp"/* "$EXT_DIR/ublock/"
+            cp -r "$EXT_DIR/ublocklite-tmp"/* "$EXT_DIR/ublocklite/"
         fi
-        rm -rf "$EXT_DIR/ublock-tmp"
+        rm -rf "$EXT_DIR/ublocklite-tmp"
         rm -f "$UBLOCK_ZIP"
-        echo "  ✓ uBlock Origin instalado"
+        echo "  ✓ uBlock Origin Lite instalado"
     else
-        echo "  ✗ Error al descargar uBlock Origin"
+        echo "  ✗ Error al descargar uBlock Origin Lite"
         rm -f "$UBLOCK_ZIP"
     fi
 

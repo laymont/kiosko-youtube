@@ -81,10 +81,13 @@ CDP. No hay build, tests, linter ni CI.
 
 ## Extensiones anti-ads
 
-- `install.sh` pregunta si instalar uBlock Origin y SponsorBlock; si acepta, los
-  descarga de GitHub releases y los extrae en `~/.config/tvchrome/extensions/`.
-- `tvkiosk` los carga con `--load-extension` si existen `manifest.json` en cada
-  subdirectorio (`ublock`, `sponsorblock`).
+- `install.sh` pregunta si instalar uBlock Origin Lite (MV3) y SponsorBlock;
+  si acepta, los descarga de GitHub releases y los extrae en
+  `~/.config/tvchrome/extensions/` (`ublocklite`, `sponsorblock`).
+- Chrome 137+ **ignora `--load-extension`** en builds oficiales y MV2 está
+  muerto desde Chrome 139: `tvkiosk` carga las extensiones por CDP con
+  `Extensions.loadUnpacked` (browser websocket de `/json/version`), tanto al
+  arrancar como si el kiosko ya corría. No reintroduzcas `--load-extension`.
 - Para actualizar: borra el directorio y reejecuta `install.sh` (o descarga la
   nueva versión manualmente).
 
