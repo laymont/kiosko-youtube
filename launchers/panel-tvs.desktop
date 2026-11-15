@@ -1,19 +1,10 @@
 [Desktop Entry]
 Type=Application
 Name=YouTube en TVs
-Comment=Panel de control de YouTube en los TVs (buscar, listas, pausa, volumen, pantalla completa)
+Comment=Panel de control de YouTube en los TVs
 Exec=tvpanel-gui
 Icon=preferences-system-sound
 Terminal=false
 Categories=AudioVideo;Video;
 Keywords=youtube;tv;kiosko;panel;control;television;
 StartupWMClass=tvpanel
-Actions=search;kiosk;
-
-[Desktop Action search]
-Name=Buscar en YouTube
-Exec=tvpanel-gui
-
-[Desktop Action kiosk]
-Name=Arrancar kiosko TV
-Exec=tvkiosk

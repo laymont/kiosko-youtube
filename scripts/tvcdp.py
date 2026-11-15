@@ -3,9 +3,6 @@
 #   use: tvcdp navigate <url> | key <Space|ArrowUp|ArrowDown|f|k> | close | status
 import sys, json, time, urllib.request
 from websocket import create_connection
-import asyncio
-from keyeventpy3 import KeyEvent
-import datetime
 import os
 
 PORT = 9222
@@ -28,6 +25,11 @@ def safe_cmd(sock, req_id, method, params=None):
         return None
 
 
+def cmd(sock, req_id, method, params=None):
+    """Enviar comando CDP y devolver el resultado (alias de safe_cmd)."""
+    return safe_cmd(sock, req_id, method, params)
+
+
 def ws():
     """Conectar con Chrome DevTools Protocol con retries y fallbacks"""
     max_retries = 3
@@ -47,23 +49,6 @@ def ws():
                 sys.exit(f'ERROR: no se pudo conectar a CDP en {PORT} ({e})')
             time.sleep(2 ** i)  # backoff exponencial
     return None
-
-
-def capture_keyboard_events(sock):
-    """Captura y guarda eventos de teclado en tiempo real"""
-    events = []
-    while True:
-        try:
-            event = asyncio.get_event_loop().run_in_executor(None, lambda: KeyEvent.read())
-            if event:
-                events.append(event)
-                # Guardar en archivo persistente
-                with open('/tmp/tvkeypad.log', 'a') as f:
-                    f.write(f"{datetime.datetime.now()} - {event}\n")
-        except Exception as e:
-            print(f"Error capturando teclado: {e}")
-            break
-    return events
 
 
 KEYMAP = {
@@ -166,12 +151,13 @@ def main():
         sys.exit(f'comando desconocido: {a[0]}')
     sock.close()
     
-    # Limpiar archivos de estado al salir
-    for f in ['/tmp/tvqueue.txt', '/tmp/tvcur', '/tmp/tvfull', '/tmp/tvkiosk.log', '/tmp/tvmeta.json', '/tmp/tvkeypad.log']:
-        try:
-            os.remove(f)
-        except:
-            pass
+    # Limpiar archivos de estado solo al cerrar el kiosko
+    if a[0] == 'close':
+        for f in ['/tmp/tvqueue.txt', '/tmp/tvcur', '/tmp/tvfull', '/tmp/tvkiosk.log', '/tmp/tvmeta.json', '/tmp/tvkeypad.log']:
+            try:
+                os.remove(f)
+            except:
+                pass
 
 
 if __name__ == '__main__':

@@ -481,6 +481,8 @@ INDEX = """<!doctype html>
   button.acc:hover { background: var(--accent2); }
   button.ghost { background: transparent; border: 1px solid #333; color: var(--muted); }
   button.ghost:hover { background: var(--panel2); color: var(--text); }
+  button.success { background: var(--ok); color: #fff; }
+  button.success:hover { background: #45a049; }
   button.wide { grid-column: span 2; }
   button.small { padding: 8px 12px; font-size: 13px; min-height: 36px; border-radius: 10px; }
 
@@ -606,7 +608,7 @@ INDEX = """<!doctype html>
     <button onclick="cmd('prev')">⏮ Anterior</button>
     <button onclick="cmd('next')">⏭ Siguiente</button>
     <button class="wide" onclick="cmd('full')">⛶ Pantalla completa</button>
-    <button class="ghost" onclick="cmd('start')">▶ Encender kiosko</button>
+    <button class="success wide" onclick="cmd('start')">▶ Encender kiosko</button>
     <button class="acc" onclick="cmd('quit')">✕ Cerrar kiosko</button>
   </div>
 
