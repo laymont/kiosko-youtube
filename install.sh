@@ -223,7 +223,8 @@ echo "== lanzando panel =="
 # Arrancar panel en segundo plano (no bloquea el instalador)
 nohup tvpanel > /tmp/tvpanel.log 2>&1 &
 sleep 1
-xdg-open "http://127.0.0.1:8765/" 2>/dev/null || true
+# Abrir navegador en segundo plano (xdg-open puede bloquear)
+(xdg-open "http://127.0.0.1:8765/" 2>/dev/null &) || true
 
 echo ""
 echo "Listo. Comandos: tvs \"busqueda\", tvplay \"busqueda\", tvadd, tvctl (pause|play N|full|next|prev|list|quit)"
