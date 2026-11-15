@@ -46,6 +46,10 @@ CDP. No hay build, tests, linter ni CI.
   pestañas duplicadas (activa la pestaña existente vía `/json/activate`).
 - `--ozone-platform=x11` es obligatorio: el backend Wayland nativo ignora
   `--window-position` y el kiosko no cae en el rect de HDMI-1.
+- `--window-position`/`--window-size` NO bastan: Chrome restaura la geometría
+  guardada del perfil y puede abrir en el monitor principal. `tvkiosk` fuerza
+  el rect por CDP (`Browser.setWindowBounds`) tanto al arrancar como cuando
+  el puerto ya responde, así que reejecutarlo repara una ventana perdida.
 - `tvkiosk` es idempotente (si 9222 responde, sale 0). Para reiniciar de verdad:
   `tvctl quit` y volver a arrancar.
 - Al enviar teclas incluye siempre `windowsVirtualKeyCode` (ver `KEYMAP` en

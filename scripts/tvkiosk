@@ -22,8 +22,38 @@ xrandr >/dev/null 2>&1 || { echo "ERROR: no hay servidor X (XWayland) disponible
 GEO=$(xrandr | sed -n 's/^HDMI-1 connected.* \([0-9]*x[0-9]*\)+\([0-9]*\)+\([0-9]*\).*/\1 \2 \3/p' | head -1)
 if [ -z "$GEO" ]; then GEO="1680x1050 1600 0"; fi
 SIZE=${GEO%% *}; REST=${GEO#* }; X=${REST%% *}; Y=${REST##* }
+W=${SIZE%x*}; H=${SIZE#*x}
+
+# Chrome puede ignorar --window-position/--window-size al restaurar la
+# sesión del perfil. Fuerza la geometría por CDP en ambos caminos.
+enforce_bounds() {
+python3 - "$X" "$Y" "$W" "$H" <<'PYEOF'
+import json, sys, urllib.request
+from websocket import create_connection
+
+x, y, w, h = map(int, sys.argv[1:5])
+try:
+    tabs = json.load(urllib.request.urlopen('http://127.0.0.1:9222/json/list', timeout=4))
+    pages = [t for t in tabs if t.get('type') == 'page']
+    if not pages:
+        sys.exit(0)
+    ws = create_connection(pages[0]['webSocketDebuggerUrl'], timeout=8)
+    def rpc(i, method, params=None):
+        ws.send(json.dumps({'id': i, 'method': method, 'params': params or {}}))
+        while True:
+            m = json.loads(ws.recv())
+            if m.get('id') == i:
+                return m.get('result')
+    wid = rpc(1, 'Browser.getWindowForTarget')['windowId']
+    rpc(2, 'Browser.setWindowBounds', {'windowId': wid, 'bounds': {
+        'left': x, 'top': y, 'width': w, 'height': h, 'windowState': 'normal'}})
+except Exception as e:
+    print(f'aviso: no se pudo forzar la geometría del kiosko ({e})')
+PYEOF
+}
 
 if curl -s "http://127.0.0.1:$PORT/json/version" >/dev/null 2>&1; then
+  enforce_bounds
   echo "kiosko ya en marcha (puerto $PORT)"
   exit 0
 fi
@@ -55,8 +85,14 @@ nohup "$CHROME" \
   >/tmp/tvkiosk.log 2>&1 &
 echo "$!" > /tmp/tvkiosk.pid
 echo "kiosko arrancando en la TV ($SIZE@$X,$Y, pid $(cat /tmp/tvkiosk.pid))"
+READY=""
 for i in $(seq 1 15); do
-  curl -s "http://127.0.0.1:$PORT/json/version" >/dev/null 2>&1 && { echo "listo ($i s)"; exit 0; }
+  if curl -s "http://127.0.0.1:$PORT/json/version" >/dev/null 2>&1; then READY=1; break; fi
   sleep 1
 done
-echo "aviso: no se pudo confirmar el puerto en 15 s (revisa /tmp/tvkiosk.log)"
+if [ -n "$READY" ]; then
+  enforce_bounds
+  echo "listo ($i s)"
+else
+  echo "aviso: no se pudo confirmar el puerto en 15 s (revisa /tmp/tvkiosk.log)"
+fi
