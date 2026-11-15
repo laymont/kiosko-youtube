@@ -211,17 +211,20 @@ APPS_DIR="$HOME/.local/share/applications"
 mkdir -p "$APPS_DIR"
 install -m 644 "$SRC/../launchers/panel-tvs.desktop" "$APPS_DIR/panel-tvs.desktop"
 
-# Crear icono en el escritorio si el directorio existe
-mkdir -p "$DESKTOP_DIR"
+# Limpiar iconos antiguos del escritorio (GNOME los marca como dañados)
 rm -f "$DESKTOP_DIR/tvkiosk.desktop"
 rm -f "$DESKTOP_DIR/panel-tvs.desktop"
-install -m 755 "$SRC/../launchers/panel-tvs.desktop" "$DESKTOP_DIR/panel-tvs.desktop"
 
 # Actualizar caché de aplicaciones
 update-desktop-database "$APPS_DIR" 2>/dev/null || true
 
-gtk-launch panel-tvs.desktop 2>/dev/null || true
+echo ""
+echo "== lanzando panel =="
+# Arrancar panel en segundo plano (no bloquea el instalador)
+nohup tvpanel > /tmp/tvpanel.log 2>&1 &
+sleep 1
+xdg-open "http://127.0.0.1:8765/" 2>/dev/null || true
 
 echo ""
 echo "Listo. Comandos: tvs \"busqueda\", tvplay \"busqueda\", tvadd, tvctl (pause|play N|full|next|prev|list|quit)"
-echo "Y el panel web:  http://127.0.0.1:8765   (accion directo o boton 'Panel TVs')"
+echo "Y el panel web:  http://127.0.0.1:8765   (o busca 'YouTube en TVs' en el menú de aplicaciones)"
