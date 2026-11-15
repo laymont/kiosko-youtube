@@ -323,7 +323,23 @@ def _full_report():
 
 
 def fullscreen_click():
-    """pantalla completa: tecla f (método de confianza), sin clics sueltos."""
+    """pantalla completa: clic en el botón de YouTube (más fiable que la tecla f)."""
+    # Obtener coordenadas del botón de pantalla completa
+    ok, out, _ = sh(TVCDP, 'eval',
+                    'JSON.stringify(document.querySelector(".ytp-fullscreen-button")?.getBoundingClientRect()||{})',
+                    timeout=8)
+    if ok and out.strip().startswith('{'):
+        try:
+            rect = json.loads(out)
+            x = int(rect.get('x', 0) + rect.get('width', 0) / 2)
+            y = int(rect.get('y', 0) + rect.get('height', 0) / 2)
+            if x > 0 and y > 0:
+                sh(TVCDP, 'mouse', str(x), str(y), timeout=8)
+                time.sleep(1.0)
+                return _detect_full()
+        except Exception:
+            pass
+    # Fallback: tecla f
     sh(TVCDP, 'key', 'f')
     time.sleep(1.2)
     return _detect_full()

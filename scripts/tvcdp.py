@@ -63,12 +63,12 @@ KEYMAP = {
 
 
 def press(sock, key, code, vk, text, rid):
-    for typ in ('keyDown', 'keyUp'):
+    for i, typ in enumerate(('keyDown', 'keyUp')):
         params = {'type': typ, 'key': key, 'code': code,
                   'windowsVirtualKeyCode': vk}
         if text:
             params['text'] = text
-        cmd(sock, rid, 'Input.dispatchKeyEvent', params)
+        cmd(sock, rid + i, 'Input.dispatchKeyEvent', params)
 
 
 def main():
@@ -101,11 +101,8 @@ def main():
         if key not in KEYMAP:
             sys.exit(f'tecla no soportada: {key}')
         k, code, vk, text = KEYMAP[key]
-        # Usar safe_cmd para manejar errores
-        result = safe_cmd(sock, rid, 'Input.dispatchKeyEvent', {'type': 'keyDown', 'key': k, 'code': code,
-                                                                 'windowsVirtualKeyCode': vk, 'text': text})
-        if result is None:
-            sys.exit('ERROR: comando de teclado fallido')
+        # Usar press() que envía keyDown + keyUp (necesario para YouTube)
+        press(sock, k, code, vk, text, rid); rid += 1
         print(f'tecla presionada: {key}')
     elif a[0] == 'mouse':
         if len(a) < 3:
