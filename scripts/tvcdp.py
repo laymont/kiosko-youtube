@@ -3,27 +3,67 @@
 #   use: tvcdp navigate <url> | key <Space|ArrowUp|ArrowDown|f|k> | close | status
 import sys, json, time, urllib.request
 from websocket import create_connection
+import asyncio
+from keyeventpy3 import KeyEvent
+import datetime
+import os
 
 PORT = 9222
 BASE = f'http://127.0.0.1:{PORT}'
 
 
+def safe_cmd(sock, req_id, method, params=None):
+    """Ejecutar comando CDP con manejo de errores robusto"""
+    try:
+        sock.send(json.dumps({'id': req_id, 'method': method, 'params': params or {}}))
+        while True:
+            m = json.loads(sock.recv())
+            if m.get('id') == req_id:
+                if 'error' in m:
+                    print(f'ERROR CDP {method}: {m["error"]}')
+                    return None
+                return m.get('result')
+    except Exception as e:
+        print(f'CRÍTICO: conexión CDP rota ({e})')
+        return None
+
+
 def ws():
-    tabs = json.load(urllib.request.urlopen(f'{BASE}/json/list', timeout=4))
-    pages = [t for t in tabs if t.get('type') == 'page']
-    if not pages:
-        sys.exit('ERROR: el kiosko no tiene pestañas abiertas')
-    return create_connection(pages[0]['webSocketDebuggerUrl'], timeout=10)
+    """Conectar con Chrome DevTools Protocol con retries y fallbacks"""
+    max_retries = 3
+    for i in range(max_retries):
+        try:
+            tabs = json.load(urllib.request.urlopen(f'{BASE}/json/list', timeout=4))
+            pages = [t for t in tabs if t.get('type') == 'page']
+            if not pages:
+                if i == max_retries - 1:
+                    sys.exit(f'ERROR: el kiosko no tiene pestañas abiertas (intentos {i+1}/{max_retries})')
+                else:
+                    time.sleep(2 ** i)  # backoff exponencial
+                    continue
+            return create_connection(pages[0]['webSocketDebuggerUrl'], timeout=10)
+        except Exception as e:
+            if i == max_retries - 1:
+                sys.exit(f'ERROR: no se pudo conectar a CDP en {PORT} ({e})')
+            time.sleep(2 ** i)  # backoff exponencial
+    return None
 
 
-def cmd(sock, req_id, method, params=None):
-    sock.send(json.dumps({'id': req_id, 'method': method, 'params': params or {}}))
+def capture_keyboard_events(sock):
+    """Captura y guarda eventos de teclado en tiempo real"""
+    events = []
     while True:
-        m = json.loads(sock.recv())
-        if m.get('id') == req_id:
-            if 'error' in m:
-                sys.exit(f'ERROR CDP {method}: {m["error"]}')
-            return m.get('result')
+        try:
+            event = asyncio.get_event_loop().run_in_executor(None, lambda: KeyEvent.read())
+            if event:
+                events.append(event)
+                # Guardar en archivo persistente
+                with open('/tmp/tvkeypad.log', 'a') as f:
+                    f.write(f"{datetime.datetime.now()} - {event}\n")
+        except Exception as e:
+            print(f"Error capturando teclado: {e}")
+            break
+    return events
 
 
 KEYMAP = {
@@ -47,9 +87,17 @@ def press(sock, key, code, vk, text, rid):
 
 
 def main():
+    """Main function con manejo de errores global"""
     a = sys.argv[1:]
     if not a:
-        sys.exit('uso: tvcdp navigate <url> | key <Space|ArrowUp|ArrowDown|f> | close | status')
+        sys.exit('uso: tvcdp navigate <url> | key <Space|ArrowUp|ArrowDown|f|k> | close | status')
+    
+    # Verificar conexión CDP antes de continuar
+    sock = ws()
+    if not sock:
+        sys.exit(1)
+    
+    rid = 1
     if a[0] == 'status':
         try:
             urllib.request.urlopen(f'{BASE}/json/version', timeout=3)
@@ -57,9 +105,7 @@ def main():
         except Exception:
             print('kiosko: apagado')
         return
-    sock = ws()
-    rid = 1
-    if a[0] == 'navigate':
+    elif a[0] == 'navigate':
         if len(a) < 2:
             sys.exit('tvcdp navigate <url>')
         cmd(sock, rid, 'Page.enable'); rid += 1
@@ -70,7 +116,11 @@ def main():
         if key not in KEYMAP:
             sys.exit(f'tecla no soportada: {key}')
         k, code, vk, text = KEYMAP[key]
-        press(sock, k, code, vk, text, rid)
+        # Usar safe_cmd para manejar errores
+        result = safe_cmd(sock, rid, 'Input.dispatchKeyEvent', {'type': 'keyDown', 'key': k, 'code': code,
+                                                                 'windowsVirtualKeyCode': vk, 'text': text})
+        if result is None:
+            sys.exit('ERROR: comando de teclado fallido')
         print(f'tecla presionada: {key}')
     elif a[0] == 'mouse':
         if len(a) < 3:
@@ -99,6 +149,13 @@ def main():
             sys.exit('ERROR: captura vacia')
         sys.stdout.write(data)
     elif a[0] == 'close':
+        # Verificar conexión antes de cerrar
+        try:
+            urllib.request.urlopen(f'{BASE}/json/version', timeout=3)
+        except Exception:
+            print('kiosko: apagado')
+            sys.exit(1)
+        
         cmd(sock, rid, 'Page.enable'); rid += 1
         t = json.load(urllib.request.urlopen(f'{BASE}/json/list', timeout=4))
         pages = [x for x in t if x.get('type') == 'page']
@@ -108,6 +165,13 @@ def main():
     else:
         sys.exit(f'comando desconocido: {a[0]}')
     sock.close()
+    
+    # Limpiar archivos de estado al salir
+    for f in ['/tmp/tvqueue.txt', '/tmp/tvcur', '/tmp/tvfull', '/tmp/tvkiosk.log', '/tmp/tvmeta.json', '/tmp/tvkeypad.log']:
+        try:
+            os.remove(f)
+        except:
+            pass
 
 
 if __name__ == '__main__':

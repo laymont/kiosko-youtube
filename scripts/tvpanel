@@ -18,7 +18,47 @@ META = '/tmp/tvmeta.json'
 FULL = '/tmp/tvfull'
 LAST = {'q': None}
 
+# Favoritos persistentes
+FAVORITES = os.path.join(os.path.expanduser('~'), '.config', 'tvchrome', 'favorites.json')
 STATE_LOCK = threading.Lock()
+
+# Cargar favoritos al inicio
+if not os.path.exists(FAVORITES):
+    write_favorites([])
+
+def read_favorites():
+    try:
+        return json.load(open(FAVORITES))
+    except Exception:
+        return []
+
+def write_favorites(rows):
+    with open(FAVORITES, 'w') as f:
+        json.dump({'rows': rows}, f)
+
+# Añadir favorito
+@STATE_LOCK
+def do_add_favorite(vid):
+    favorites = read_favorites()
+    if vid not in [f['vid'] for f in favorites]:
+        favorites.append({'vid': vid, 'title': ''})
+        write_favorites(favorites)
+        return {'ok': True, 'count': len(favorites)}
+    return {'error': 'ya es favorito'}
+
+# Eliminar favorito
+@STATE_LOCK
+def do_remove_favorite(vid):
+    favorites = read_favorites()
+    favorites = [f for f in favorites if f['vid'] != vid]
+    write_favorites(favorites)
+    return {'ok': True, 'count': len(favorites)}
+
+# Verificar si es favorito
+@STATE_LOCK
+def is_favorite(vid):
+    favorites = read_favorites()
+    return any(f['vid'] == vid for f in favorites)
 
 
 def sh(*args, timeout=60):
@@ -112,7 +152,7 @@ def state():
             'thumb': r.get('thumb') or f'https://i.ytimg.com/vi/{vid}/mqdefault.jpg',
             'cur': i == cur,
         })
-    return {'on': on, 'title': title, 'url': url, 'full': full, 'cur': cur, 'entries': entries}
+    return {'on': on, 'title': title, 'url': url, 'full': full, 'cur': cur, 'entries': entries, 'favorites': read_favorites()}
 
 
 def do_search(q, append=False):
@@ -344,7 +384,11 @@ INDEX = """<!doctype html>
 
   <div class="sec"><h2>Resultados / lista (clic en uno para reproducirlo)</h2>
     <div id="res"></div>
-    <div class="band" id="band"><button onclick="more()">+ mas resultados</button></div>
+    <div class="band" id="band"><button onclick="more()+addFavorites()">+ mas resultados</button></div>
+  </div>
+
+  <div class="sec"><h2>Favoritos</h2>
+    <div id="fav-list"></div>
   </div>
 </div>
 <script>
@@ -363,6 +407,28 @@ function search(){ const q=document.getElementById('q').value.trim();
     .catch(()=>{})
     .finally(()=>{ searching=false; refresh(); }); }
 function more(){ api('/api/more',{}).then(refresh).catch(()=>refresh()); }
+async function addFavorites(){
+  const favs = await api('/api/favorites');
+  const favList = document.getElementById('fav-list');
+  if(!favs.ok) { favList.innerHTML = '<div class="item">Error: '+favs.error+'</div>'; return; }
+  favList.innerHTML = favs.favorites.map(f => 
+    `<div class="item" onclick="play(${f.vid})">
+       <img src="${f.thumb || 'https://i.ytimg.com/vi/${f.vid}/mqdefault.jpg'}" loading="lazy" alt="">
+       <div class="info">
+         <div class="t">${f.title || f.vid}</div>
+       </div>
+     </div>`
+  ).join('');
+}
+async function toggleFavorite(vid) {
+  const res = await api('/api/favorites/add',{vid});
+  if(res.ok) {
+    alert('${vid} añadido a favoritos');
+    addFavorites();
+  } else {
+    alert('Ya es favorito');
+  }
+}
 function play(n){ api('/api/play',{n}).then(refresh).catch(()=>refresh()); }
 function render(){
   document.getElementById('res').innerHTML = entries.map(e=>
@@ -390,6 +456,7 @@ function refresh(){
   }).catch(()=>{});
 }
 setInterval(refresh, 4000); refresh();
+addFavorites(); // Cargar favoritos al inicio
 </script></body></html>
 """
 
@@ -437,6 +504,31 @@ class H(BaseHTTPRequestHandler):
             self._json(do_play(body.get('n', 1)))
         elif self.path == '/api/nav':
             self._json(navigate(body.get('url', '')))
+        elif self.path == '/api/favorites/add':
+            vid = body.get('vid', '')
+            if not vid:
+                self._json({'error': 'vid requerido'})
+            else:
+                result = do_add_favorite(vid)
+                entries = read_favorites()
+                for e in entries:
+                    e['cur'] = any(row.get('vid') == e['vid'] for row in read_meta() if row.get('vid') == e['vid'])
+                self._json(result, 201 if result.get('ok') else 400)
+        elif self.path == '/api/favorites/remove':
+            vid = body.get('vid', '')
+            if not vid:
+                self._json({'error': 'vid requerido'})
+            else:
+                result = do_remove_favorite(vid)
+                entries = read_favorites()
+                for e in entries:
+                    e['cur'] = any(row.get('vid') == e['vid'] for row in read_meta() if row.get('vid') == e['vid'])
+                self._json(result, 204 if result.get('ok') else 400)
+        elif self.path == '/api/favorites':
+            entries = read_favorites()
+            for e in entries:
+                e['cur'] = any(row.get('vid') == e['vid'] for row in read_meta() if row.get('vid') == e['vid'])
+            self._json({'ok': True, 'favorites': entries})
         else:
             self._json({'error': 'not found'}, 404)
 
