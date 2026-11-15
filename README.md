@@ -33,7 +33,10 @@ git clone <repo> tv-kiosk && cd tv-kiosk
 ```
 
 El instalador copia los scripts a `~/.local/bin`, crea el wrapper de `yt-dlp`,
-escribe los accesos en el escritorio y arranca el kiosko y el panel.
+instala el lanzador en el menú de aplicaciones y deja el panel disponible en
+segundo plano. No abre el navegador ni arranca Chrome automáticamente; abre
+"YouTube en TVs" desde el menú para usar el panel y encender el kiosko cuando
+lo necesites.
 
 Dependencias:
 

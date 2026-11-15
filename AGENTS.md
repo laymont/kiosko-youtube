@@ -20,8 +20,9 @@ CDP. No hay build, tests, linter ni CI.
 - `install.sh` copia `scripts/*` a `~/.local/bin` y genera allí un wrapper
   `yt-dlp` (`python3 -m yt_dlp`). Editar `scripts/` **no** cambia lo instalado:
   reejecuta `./install.sh` o invoca `./scripts/tvctl` explícitamente.
-- `install.sh` termina lanzando kiosko y panel con `gtk-launch`: abre Chrome a
-  pantalla completa en la TV. No lo ejecutes como "solo comprobar".
+- `install.sh` instala el lanzador en `~/.local/share/applications/` e inicia
+  `tvpanel` desconectado de la terminal. No abre el navegador ni arranca Chrome;
+  el usuario abre el panel desde el menú cuando quiera.
 - Cada script resuelve sus pares con `BIN="$(cd "$(dirname "$0")" && pwd)"`, no
   por `PATH`. Solo `yt-dlp` cae a `PATH` si no hay wrapper hermano. Mantén ese
   patrón para que funcionen desde el repo y desde `~/.local/bin`.
