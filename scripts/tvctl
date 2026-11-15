@@ -47,7 +47,6 @@ case "$C" in
   salto|adelantar) "$CDP" key End ;;
   retroceder)    "$CDP" key Home ;;
   quit|cerrar)   "$CDP" close ;;
-  play)          play_idx "${2:-1}" ;;
   [0-9]*)        play_idx "$C" ;;
   next|siguiente)
     [ ! -f "$CUR" ] && { echo "primero: tvs \"busqueda\" o tvplay"; exit 1; }

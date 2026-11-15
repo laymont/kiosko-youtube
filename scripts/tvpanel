@@ -17,18 +17,23 @@ CUR = '/tmp/tvcur'
 META = '/tmp/tvmeta.json'
 FULL = '/tmp/tvfull'
 LAST = {'q': None}
+LASTQ_FILE = '/tmp/tvlastq.txt'
 
 # Favoritos persistentes
 FAVORITES = os.path.join(os.path.expanduser('~'), '.config', 'tvchrome', 'favorites.json')
 STATE_LOCK = threading.Lock()
 
-# Cargar favoritos al inicio
-if not os.path.exists(FAVORITES):
-    write_favorites([])
-
 def read_favorites():
     try:
-        return json.load(open(FAVORITES))
+        data = json.load(open(FAVORITES))
+        rows = data.get('rows', []) if isinstance(data, dict) else data
+        out = []
+        for f in rows:
+            if isinstance(f, str):
+                out.append({'vid': f, 'title': ''})
+            elif isinstance(f, dict) and f.get('vid'):
+                out.append({'vid': f['vid'], 'title': f.get('title', '')})
+        return out
     except Exception:
         return []
 
@@ -36,29 +41,33 @@ def write_favorites(rows):
     with open(FAVORITES, 'w') as f:
         json.dump({'rows': rows}, f)
 
+# Cargar favoritos al inicio
+if not os.path.exists(FAVORITES):
+    write_favorites([])
+
 # Añadir favorito
-@STATE_LOCK
-def do_add_favorite(vid):
-    favorites = read_favorites()
-    if vid not in [f['vid'] for f in favorites]:
-        favorites.append({'vid': vid, 'title': ''})
-        write_favorites(favorites)
-        return {'ok': True, 'count': len(favorites)}
+def do_add_favorite(vid, title=''):
+    with STATE_LOCK:
+        favorites = read_favorites()
+        if vid not in [f['vid'] for f in favorites]:
+            favorites.append({'vid': vid, 'title': title})
+            write_favorites(favorites)
+            return {'ok': True, 'count': len(favorites)}
     return {'error': 'ya es favorito'}
 
 # Eliminar favorito
-@STATE_LOCK
 def do_remove_favorite(vid):
-    favorites = read_favorites()
-    favorites = [f for f in favorites if f['vid'] != vid]
-    write_favorites(favorites)
-    return {'ok': True, 'count': len(favorites)}
+    with STATE_LOCK:
+        favorites = read_favorites()
+        favorites = [f for f in favorites if f['vid'] != vid]
+        write_favorites(favorites)
+        return {'ok': True, 'count': len(favorites)}
 
 # Verificar si es favorito
-@STATE_LOCK
 def is_favorite(vid):
-    favorites = read_favorites()
-    return any(f['vid'] == vid for f in favorites)
+    with STATE_LOCK:
+        favorites = read_favorites()
+        return any(f['vid'] == vid for f in favorites)
 
 
 def sh(*args, timeout=60):
@@ -111,6 +120,17 @@ def fmt_dur(s):
         return ''
 
 
+def _playback_state():
+    """Devuelve 'playing', 'paused' o '' si no se puede saber."""
+    ok, out, _ = sh(TVCDP, 'eval',
+                    'document.querySelector("video")?'
+                    '(document.querySelector("video").paused?"paused":"playing"):""',
+                    timeout=8)
+    if ok and out.strip() in ('playing', 'paused'):
+        return out.strip()
+    return ''
+
+
 def state():
     if os.path.exists(TVCDP):
         ok, out, _ = sh(TVCDP, 'status')
@@ -130,9 +150,14 @@ def state():
         except Exception:
             pass
     full = False
+    playback = ''
     if on:
         try:
             full = _detect_full()
+        except Exception:
+            pass
+        try:
+            playback = _playback_state()
         except Exception:
             pass
     rows = read_meta()
@@ -152,7 +177,34 @@ def state():
             'thumb': r.get('thumb') or f'https://i.ytimg.com/vi/{vid}/mqdefault.jpg',
             'cur': i == cur,
         })
-    return {'on': on, 'title': title, 'url': url, 'full': full, 'cur': cur, 'entries': entries, 'favorites': read_favorites()}
+    favs = read_favorites()
+    return {
+        'on': on,
+        'title': title,
+        'url': url,
+        'full': full,
+        'playback': playback,
+        'cur': cur,
+        'total': len(entries),
+        'favorites_count': len(favs),
+        'entries': entries,
+        'favorites': favs,
+    }
+
+
+def _load_last_q():
+    try:
+        return open(LASTQ_FILE).read().strip() or None
+    except Exception:
+        return None
+
+
+def _save_last_q(q):
+    try:
+        with open(LASTQ_FILE, 'w') as f:
+            f.write(q)
+    except Exception:
+        pass
 
 
 def do_search(q, append=False):
@@ -163,6 +215,7 @@ def do_search(q, append=False):
             old = 0
         if not append:
             LAST['q'] = q
+            _save_last_q(q)
         ok, out, err = sh(YTDL, '--no-warnings', '-J',
                           f'ytsearch5:{q}', timeout=50)
         if not ok:
@@ -199,9 +252,10 @@ def do_search(q, append=False):
 
 def do_more():
     """pagina siguiente de la ultima busqueda (append 5 mas)."""
-    q = LAST.get('q')
+    q = LAST.get('q') or _load_last_q()
     if not q:
         return {'error': 'busca una frase primero'}
+    LAST['q'] = q
     with STATE_LOCK:
         offset = max(len(read_meta()), len(read_entries()))
         ok, out, err = sh(YTDL, '--flat-playlist', '--no-warnings', '-J',
@@ -334,45 +388,225 @@ INDEX = """<!doctype html>
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>Control TVs</title>
 <style>
-  :root { color-scheme: dark; }
-  body { font-family: system-ui, sans-serif; background:#141414; color:#eee; margin:0; padding:24px; }
-  .wrap { max-width: 640px; margin: 0 auto; }
-  h1 { font-size: 20px; margin: 0 0 6px; }
-  .status { font-size: 14px; color:#999; margin-bottom: 14px; }
-  .status .dot { display:inline-block; width:10px; height:10px; border-radius:50%; background:#f44; margin-right:6px; }
-  .status .dot.on { background:#4c4; }
-  .grid { display:grid; grid-template-columns:repeat(4,1fr); gap:10px; margin-bottom:18px; }
-  button { appearance:none; border:0; border-radius:12px; padding:16px 6px; font-size:15px;
-           background:#272727; color:#eee; cursor:pointer; }
-  button:hover { background:#3a3a3a; }
-  button.acc { background:#c4302b; } button.acc:hover { background:#d5403a; }
+  :root {
+    color-scheme: dark;
+    --bg: #0f0f0f;
+    --panel: #1a1a1a;
+    --panel2: #242424;
+    --text: #f0f0f0;
+    --muted: #9a9a9a;
+    --accent: #ff0000;
+    --accent2: #cc0000;
+    --ok: #4caf50;
+    --warn: #ff9800;
+    --radius: 14px;
+  }
+  * { box-sizing: border-box; }
+  body {
+    font-family: system-ui, -apple-system, sans-serif;
+    background: var(--bg);
+    color: var(--text);
+    margin: 0;
+    padding: 20px;
+    min-height: 100vh;
+  }
+  .wrap { max-width: 720px; margin: 0 auto; }
+  h1 { font-size: 22px; margin: 0 0 4px; letter-spacing: -0.3px; }
+  .subtitle { font-size: 13px; color: var(--muted); margin-bottom: 18px; }
+
+  /* Stats bar */
+  .stats {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(140px, 1fr));
+    gap: 10px;
+    margin-bottom: 18px;
+  }
+  .stat {
+    background: var(--panel);
+    border: 1px solid #2a2a2a;
+    border-radius: var(--radius);
+    padding: 12px 14px;
+  }
+  .stat .label { font-size: 11px; color: var(--muted); text-transform: uppercase; letter-spacing: 0.5px; }
+  .stat .value { font-size: 16px; font-weight: 600; margin-top: 4px; }
+  .stat .value.ok { color: var(--ok); }
+  .stat .value.warn { color: var(--warn); }
+
+  /* Status */
+  .status {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    font-size: 14px;
+    color: var(--muted);
+    margin-bottom: 16px;
+    padding: 10px 14px;
+    background: var(--panel);
+    border-radius: var(--radius);
+    border: 1px solid #2a2a2a;
+  }
+  .status .dot {
+    display: inline-block;
+    width: 10px;
+    height: 10px;
+    border-radius: 50%;
+    background: var(--warn);
+  }
+  .status .dot.on { background: var(--ok); }
+  .status .dot.off { background: #f44336; }
+
+  /* Controls */
+  .grid {
+    display: grid;
+    grid-template-columns: repeat(4, 1fr);
+    gap: 10px;
+    margin-bottom: 18px;
+  }
+  button {
+    appearance: none;
+    border: 0;
+    border-radius: var(--radius);
+    padding: 16px 8px;
+    font-size: 15px;
+    font-weight: 500;
+    background: var(--panel2);
+    color: var(--text);
+    cursor: pointer;
+    transition: background 0.15s, transform 0.05s;
+    min-height: 52px;
+  }
+  button:hover { background: #333; }
+  button:active { transform: scale(0.98); }
+  button.acc { background: var(--accent); }
+  button.acc:hover { background: var(--accent2); }
+  button.ghost { background: transparent; border: 1px solid #333; color: var(--muted); }
+  button.ghost:hover { background: var(--panel2); color: var(--text); }
   button.wide { grid-column: span 2; }
-  .search { display:flex; gap:8px; margin-bottom:12px; }
-  input[type=text] { flex:1; padding:12px; border-radius:10px; border:1px solid #333;
-        background:#1e1e1e; color:#eee; font-size:15px; }
-  .sec h2 { font-size:14px; color:#999; margin:16px 0 8px; font-weight:400; text-transform:uppercase; letter-spacing:.5px; }
-  .item { display:flex; gap:10px; align-items:center; padding:8px 10px; border-radius:10px; cursor:pointer; }
-  .item:hover { background:#222; }
-  .item.cur { background:#2e2e2e; }
-  .item img { width:120px; height:68px; object-fit:cover; border-radius:6px; flex:none; }
-  .item .info { flex:1; min-width:0; }
-  .item .t { font-size:14px; line-height:1.25; }
-  .item .m { font-size:12px; color:#999; margin-top:3px; }
-  .item.cur .t { color:#fff; }
-  .badge { display:inline-block; font-size:10px; color:#ddd; background:#c4302b; border-radius:5px; padding:1px 5px; margin-left:6px; vertical-align:2px; }
-  .band { border-top:1px solid #222; margin-top:8px; }
-  .band button { background:none; color:#aaa; font-size:13px; padding:10px; border-radius:8px; }
+  button.small { padding: 8px 12px; font-size: 13px; min-height: 36px; border-radius: 10px; }
+
+  /* Search */
+  .search { display: flex; gap: 8px; margin-bottom: 20px; }
+  input[type=text] {
+    flex: 1;
+    padding: 14px 16px;
+    border-radius: var(--radius);
+    border: 1px solid #333;
+    background: var(--panel);
+    color: var(--text);
+    font-size: 16px;
+    outline: none;
+  }
+  input[type=text]:focus { border-color: var(--accent); }
+  .search button { min-width: 90px; }
+
+  /* Sections */
+  .sec { margin-bottom: 24px; }
+  .sec h2 {
+    font-size: 13px;
+    color: var(--muted);
+    margin: 0 0 10px;
+    font-weight: 500;
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+  }
+
+  /* List items */
+  .item {
+    display: flex;
+    gap: 12px;
+    align-items: center;
+    padding: 10px 12px;
+    border-radius: var(--radius);
+    cursor: pointer;
+    transition: background 0.15s;
+    margin-bottom: 6px;
+    background: var(--panel);
+    border: 1px solid transparent;
+  }
+  .item:hover { background: var(--panel2); border-color: #333; }
+  .item.cur { background: #2a1a1a; border-color: var(--accent); }
+  .item img {
+    width: 140px;
+    height: 80px;
+    object-fit: cover;
+    border-radius: 8px;
+    flex: none;
+    background: #222;
+  }
+  .item .info { flex: 1; min-width: 0; }
+  .item .t {
+    font-size: 14px;
+    line-height: 1.3;
+    display: -webkit-box;
+    -webkit-line-clamp: 2;
+    -webkit-box-orient: orient;
+    overflow: hidden;
+  }
+  .item .m { font-size: 12px; color: var(--muted); margin-top: 4px; }
+  .item.cur .t { color: #fff; }
+  .badge {
+    display: inline-block;
+    font-size: 10px;
+    color: #fff;
+    background: var(--accent);
+    border-radius: 4px;
+    padding: 2px 6px;
+    margin-left: 6px;
+    vertical-align: middle;
+  }
+  .fav-btn {
+    background: none;
+    border: none;
+    color: var(--muted);
+    font-size: 18px;
+    padding: 8px;
+    cursor: pointer;
+    min-height: auto;
+  }
+  .fav-btn:hover { color: var(--warn); }
+  .fav-btn.active { color: var(--warn); }
+
+  /* Band / load more */
+  .band { border-top: 1px solid #222; margin-top: 12px; padding-top: 12px; text-align: center; }
+  .band button { background: none; color: var(--muted); font-size: 14px; padding: 10px 16px; }
+  .band button:hover { color: var(--text); }
+
+  /* Empty / loading */
+  .empty {
+    padding: 24px;
+    text-align: center;
+    color: var(--muted);
+    font-size: 14px;
+  }
+
+  /* Responsive */
+  @media (max-width: 600px) {
+    .grid { grid-template-columns: repeat(2, 1fr); }
+    .item img { width: 100px; height: 60px; }
+    .stats { grid-template-columns: repeat(2, 1fr); }
+  }
 </style></head><body>
 <div class="wrap">
   <h1>YouTube en los TVs</h1>
+  <div class="subtitle">Panel de control remoto</div>
+
+  <div class="stats">
+    <div class="stat"><div class="label">Estado</div><div class="value" id="stat-state">-</div></div>
+    <div class="stat"><div class="label">Reproducción</div><div class="value" id="stat-play">-</div></div>
+    <div class="stat"><div class="label">Cola</div><div class="value" id="stat-queue">-</div></div>
+    <div class="stat"><div class="label">Favoritos</div><div class="value" id="stat-favs">-</div></div>
+  </div>
+
   <div class="status"><span class="dot" id="dot"></span><span id="sttxt">comprobando...</span></div>
 
   <div class="grid">
-    <button class="wide" onclick="cmd('pause')">⏸ Pausa</button>
-    <button onclick="cmd('vol+')">🔊 +</button>
-    <button onclick="cmd('vol-')">🔉 -</button>
-    <button onclick="cmd('next')">⏭ Saltar al final</button>
+    <button class="wide" onclick="cmd('pause')">⏸ Pausa / Reanudar</button>
+    <button onclick="cmd('vol+')">🔊 Vol +</button>
+    <button onclick="cmd('vol-')">🔉 Vol -</button>
+    <button onclick="cmd('prev')">⏮ Anterior</button>
+    <button onclick="cmd('next')">⏭ Siguiente</button>
     <button class="wide" onclick="cmd('full')">⛶ Pantalla completa</button>
+    <button class="ghost" onclick="cmd('start')">▶ Encender kiosko</button>
     <button class="acc" onclick="cmd('quit')">✕ Cerrar kiosko</button>
   </div>
 
@@ -384,7 +618,7 @@ INDEX = """<!doctype html>
 
   <div class="sec"><h2>Resultados / lista (clic en uno para reproducirlo)</h2>
     <div id="res"></div>
-    <div class="band" id="band"><button onclick="more()+addFavorites()">+ mas resultados</button></div>
+    <div class="band" id="band"><button onclick="more()">+ más resultados</button></div>
   </div>
 
   <div class="sec"><h2>Favoritos</h2>
@@ -393,70 +627,121 @@ INDEX = """<!doctype html>
 </div>
 <script>
 let entries = [];
+let favorites = [];
 let searching = false;
-function api(p, body) { return fetch(p, {method:'POST', headers:{'Content-Type':'application/json'},
-                     body: JSON.stringify(body||{})}).then(r=>r.json()); }
+
+function api(p, body) {
+  return fetch(p, {method:'POST', headers:{'Content-Type':'application/json'},
+                   body: JSON.stringify(body||{})}).then(r=>r.json());
+}
+
 function cmd(c){ api('/api/cmd',{c}).then(refresh).catch(()=>refresh()); }
-function search(){ const q=document.getElementById('q').value.trim();
+
+function search(){
+  const q=document.getElementById('q').value.trim();
   if(!q) return;
   searching=true;
   entries=[];
   render();
   api('/api/search',{q})
-    .then(()=>{})
-    .catch(()=>{})
-    .finally(()=>{ searching=false; refresh(); }); }
-function more(){ api('/api/more',{}).then(refresh).catch(()=>refresh()); }
-async function addFavorites(){
-  const favs = await api('/api/favorites');
-  const favList = document.getElementById('fav-list');
-  if(!favs.ok) { favList.innerHTML = '<div class="item">Error: '+favs.error+'</div>'; return; }
-  favList.innerHTML = favs.favorites.map(f => 
-    `<div class="item" onclick="play(${f.vid})">
-       <img src="${f.thumb || 'https://i.ytimg.com/vi/${f.vid}/mqdefault.jpg'}" loading="lazy" alt="">
-       <div class="info">
-         <div class="t">${f.title || f.vid}</div>
-       </div>
-     </div>`
-  ).join('');
+    .then(r=>{ if(r.error) alert(r.error); })
+    .catch(e=>alert('Error: '+e))
+    .finally(()=>{ searching=false; refresh(); });
 }
-async function toggleFavorite(vid) {
-  const res = await api('/api/favorites/add',{vid});
-  if(res.ok) {
-    alert('${vid} añadido a favoritos');
-    addFavorites();
+
+function more(){ api('/api/more',{}).then(r=>{ if(r.error) alert(r.error); refresh(); }).catch(()=>refresh()); }
+
+function isFavorite(vid) { return favorites.some(f => f.vid === vid); }
+
+async function toggleFavorite(vid, title) {
+  if (isFavorite(vid)) {
+    await api('/api/favorites/remove', {vid});
   } else {
-    alert('Ya es favorito');
+    await api('/api/favorites/add', {vid, title});
+  }
+  refresh();
+}
+
+function playVid(vid) {
+  // Buscar el índice en la lista actual y reproducir
+  const idx = entries.findIndex(e => e.vid === vid);
+  if (idx >= 0) play(idx + 1);
+  else {
+    // Si es favorito, navegar directamente
+    api('/api/nav', {url: 'https://www.youtube.com/watch?v=' + vid + '&autoplay=1'});
   }
 }
+
 function play(n){ api('/api/play',{n}).then(refresh).catch(()=>refresh()); }
+
 function render(){
-  document.getElementById('res').innerHTML = entries.map(e=>
-    `<div class="item ${e.cur?'cur':''}" onclick="play(${e.n})">
-       <img src="${e.thumb}" loading="lazy" alt="">
-       <div class="info">
-         <div class="t">${e.title}${e.cur?'<span class="badge">▶ suena</span>':''}</div>
-         <div class="m">${e.channel}${e.duration?' · '+e.duration:''}</div>
-       </div>
-     </div>`
-  ).join('') || (searching
-      ? '<div class="item"><div class="info"><div class="t">buscando...</div></div></div>'
-      : '<div class="item"><div class="info"><div class="t">(vacío: busca algo arriba)</div></div></div>');
+  const res = document.getElementById('res');
+  if (searching) {
+    res.innerHTML = '<div class="empty">Buscando...</div>';
+    return;
+  }
+  if (!entries.length) {
+    res.innerHTML = '<div class="empty">(vacío: busca algo arriba o usa la terminal: tvs "frase")</div>';
+    return;
+  }
+  res.innerHTML = entries.map(e=>{
+    const fav = isFavorite(e.vid) ? 'active' : '';
+    return `<div class="item ${e.cur?'cur':''}" onclick="play(${e.n})">
+      <img src="${e.thumb}" loading="lazy" alt="">
+      <div class="info">
+        <div class="t">${e.title}${e.cur?'<span class="badge">▶ sonando</span>':''}</div>
+        <div class="m">${e.channel||''}${e.duration?' · '+e.duration:''}</div>
+      </div>
+      <button class="fav-btn ${fav}" onclick="event.stopPropagation();toggleFavorite('${e.vid}','${(e.title||'').replace(/'/g,"\\'")}')" title="Favorito">★</button>
+    </div>`;
+  }).join('');
 }
+
+function renderFavorites(){
+  const favList = document.getElementById('fav-list');
+  if (!favorites.length) {
+    favList.innerHTML = '<div class="empty">Sin favoritos todavía</div>';
+    return;
+  }
+  favList.innerHTML = favorites.map(f=>`
+    <div class="item" onclick="playVid('${f.vid}')">
+      <img src="${f.thumb || 'https://i.ytimg.com/vi/'+f.vid+'/mqdefault.jpg'}" loading="lazy" alt="">
+      <div class="info">
+        <div class="t">${f.title || f.vid}</div>
+      </div>
+      <button class="fav-btn active" onclick="event.stopPropagation();toggleFavorite('${f.vid}')" title="Quitar">★</button>
+    </div>
+  `).join('');
+}
+
+function updateStats(s){
+  document.getElementById('stat-state').textContent = s.on ? 'Activo' : 'Apagado';
+  document.getElementById('stat-state').className = 'value ' + (s.on ? 'ok' : 'warn');
+  document.getElementById('stat-play').textContent = s.playback || (s.on ? '...' : '-');
+  document.getElementById('stat-play').className = 'value ' + (s.playback === 'playing' ? 'ok' : (s.playback === 'paused' ? 'warn' : ''));
+  document.getElementById('stat-queue').textContent = s.total ? `${s.cur}/${s.total}` : '0';
+  document.getElementById('stat-favs').textContent = s.favorites_count || 0;
+}
+
 function refresh(){
   if(searching) return;
   fetch('/api/state').then(r=>r.json()).then(s=>{
+    favorites = s.favorites || [];
     const curN = s.cur;
     entries = s.entries.map((e,i)=>({...e, n:i+1, cur:(i+1)===curN}));
     const dot=document.getElementById('dot'), tx=document.getElementById('sttxt');
-    dot.className='dot'+(s.on?' on':'');
-    tx.textContent = s.on ? ('kiosko activo · '+(s.title||s.url||'...')+(s.full?' · pantalla completa':''))
-                          : 'kiosko apagado (pulsa el boton de la TV del escritorio y refresca)';
+    dot.className='dot'+(s.on?' on':' off');
+    tx.textContent = s.on
+      ? ('Kiosko activo · '+(s.title||s.url||'...')+(s.full?' · pantalla completa':'')+(s.playback?' · '+s.playback:''))
+      : 'Kiosko apagado (pulsa "Encender kiosko" o el botón de la TV del escritorio)';
+    updateStats(s);
     render();
+    renderFavorites();
   }).catch(()=>{});
 }
-setInterval(refresh, 4000); refresh();
-addFavorites(); // Cargar favoritos al inicio
+
+setInterval(refresh, 3000);
+refresh();
 </script></body></html>
 """
 
@@ -506,13 +791,11 @@ class H(BaseHTTPRequestHandler):
             self._json(navigate(body.get('url', '')))
         elif self.path == '/api/favorites/add':
             vid = body.get('vid', '')
+            title = body.get('title', '')
             if not vid:
                 self._json({'error': 'vid requerido'})
             else:
-                result = do_add_favorite(vid)
-                entries = read_favorites()
-                for e in entries:
-                    e['cur'] = any(row.get('vid') == e['vid'] for row in read_meta() if row.get('vid') == e['vid'])
+                result = do_add_favorite(vid, title)
                 self._json(result, 201 if result.get('ok') else 400)
         elif self.path == '/api/favorites/remove':
             vid = body.get('vid', '')
@@ -520,15 +803,9 @@ class H(BaseHTTPRequestHandler):
                 self._json({'error': 'vid requerido'})
             else:
                 result = do_remove_favorite(vid)
-                entries = read_favorites()
-                for e in entries:
-                    e['cur'] = any(row.get('vid') == e['vid'] for row in read_meta() if row.get('vid') == e['vid'])
                 self._json(result, 204 if result.get('ok') else 400)
         elif self.path == '/api/favorites':
-            entries = read_favorites()
-            for e in entries:
-                e['cur'] = any(row.get('vid') == e['vid'] for row in read_meta() if row.get('vid') == e['vid'])
-            self._json({'ok': True, 'favorites': entries})
+            self._json({'ok': True, 'favorites': read_favorites()})
         else:
             self._json({'error': 'not found'}, 404)
 
