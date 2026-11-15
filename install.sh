@@ -210,6 +210,9 @@ echo "== accesos en el escritorio ($DESKTOP_DIR) =="
 APPS_DIR="$HOME/.local/share/applications"
 mkdir -p "$APPS_DIR"
 install -m 644 "$SRC/../launchers/panel-tvs.desktop" "$APPS_DIR/panel-tvs.desktop"
+# Usar ruta absoluta en Exec: algunos entornos no resuelven nombres de PATH
+DEST_ESC=$(printf '%s' "$DEST" | sed 's/[&|\\]/\\&/g')
+sed -i "s|^Exec=tvpanel-gui$|Exec=$DEST_ESC/tvpanel-gui|" "$APPS_DIR/panel-tvs.desktop"
 
 # Limpiar iconos antiguos del escritorio (GNOME los marca como dañados)
 rm -f "$DESKTOP_DIR/tvkiosk.desktop"
